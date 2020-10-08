@@ -101,24 +101,33 @@ organizeDate <- function(x, columns){
 #'
 #' @param df A dataframe with at least the column specified in sppCol
 #' @param sppCol A character vector with the column names for the species names.
-#' @return A vector vith data.frame with a scientific names up to specific names
+#' @return A vector with data.frame with a canonical name given by taxize::gbif_parse(),
+#' that is a scientific name with up to 3 elements and no authorship
+#' @importFrom taxize gbif_parse
 #' @export
 simplifySpp <- function(df, sppCol){
-  splitLits<-strsplit(as.character(df[, sppCol]), "\ ")
 
-  simpleNamesList<-lapply(splitLits, FUN=function(x){
-    if (length(x)==1){ # Only genus
-      return(x)
-    }
-    if (length(x)>=2){ # Genus and more
-      if(grepl("(?!-)(?!/)[[:punct:]]|[A-Z]", x[2], perl = TRUE)){ # Genus and more (find punctuation except for - and /)
-        return(x[1])
-      } else {
-        return(paste(x[1:2], collapse=" ")  ) # only species
-      }
-    }
-  } )
-  simpleSpp <- unlist(simpleNamesList)
+  simpleSpp <- gbif_parse(df[, sppCol])$canonicalname
+
+  # splitLits <- strsplit(as.character(df[, sppCol]), "\ ")
+  #
+  # simpleNamesList<-lapply(splitLits, FUN=function(x){
+  #   if (length(x) == 1){ # Only genus
+  #     return(x)
+  #   }
+  #   if (length(x) >= 2){ # Genus and more
+  #     if(grepl("(?!-)(?!/)[[:punct:]]|[A-Z]", x[2], perl = TRUE)){ # Genus and more (find punctuation except for - and /)
+  #       return(x[1])
+  #       # TODO cases like #Falco peregrinus, 1771" will wrongly end like "Falco"
+  #       # but without this line it will wrongly take Falco Lineus, 1771 as Falco Lineus
+  #       # is the key on the capital letter?
+  #     } else {
+  #       return(paste(x[1:2], collapse=" ")  ) # only species
+  #     }
+  #   }
+  # } )
+  # simpleSpp <- unlist(simpleNamesList)
+
   return(simpleSpp)
 }
 
@@ -146,7 +155,11 @@ getGridIDs <- function(x, grid){
       All results will use this nomenclature, but the order of the cells will remain unaltered.")
       }
 
-      return( sp::over(x, grid, returnList=FALSE) )
+      if(! identicalCRS(x, grid)){
+        grid <- spTransform(grid, slot(x,"proj4string"))
+      }
+
+      return( over(x, grid, returnList=FALSE) )
     }else stop("The argument 'grid' can only be of class SpatialPolygonsDataFrame or SpatialPolygons")
   } else stop("The argument 'x' can only be of class SpatialPointsDataFrame")
 }
@@ -221,7 +234,7 @@ createVisits<-function(x,
     if (all(timeCols=="")) timeCols <- NULL
 
     columns <- c(gridID, idCols, timeCols)
-    if (length(columns)==0) stop("At least one of the arguments 'idCols','timeCols','grid' need to be defined.")
+    if (length(columns)==0) stop("At least one of the arguments 'idCols','timeCols','grid' needs to be defined.")
 
     cols.df <- findCols(columns, df)
 
@@ -395,15 +408,17 @@ obsData.OrganizedBirds<-function(x){
 #' That is the minimum taxonomic identification level.
 #' @param taxonRank a string or vector of strings containing the taxonomic ranks to keep.
 #' Only evaluated if taxonRankCol is not \code{NULL}
-#' @param simplifySppName wheter to remove everything else that is not the species
-#' name (authors, years and intraspecific epithets). Default set to FALSE
+#' @param simplifySppName whether to remove everything else that is not the species
+#' name (authors, years). Default set to FALSE, else leaves a canonical name given
+#' by taxize::gbif_parse(), that is a scientific name with up to 3 elements.
 #'
 #' @importFrom sp coordinates proj4string spTransform CRS plot
 #' @importFrom stats IQR median na.omit  quantile var
 #' @importFrom grDevices boxplot.stats
 #' @importFrom graphics barplot layout legend mtext par plot
-#' @importFrom methods as
-#' @return a `SpatialPointsDataFrame` wrapped into an object of class OrganizedBirds, with additional attributes.
+#' @importFrom methods as slot slot<-
+#' @return a `SpatialPointsDataFrame` wrapped into an object of class OrganizedBirds,
+#' with additional attributes.
 #' @export
 #'
 #' @examples OB <- organizeBirds(bombusObs)
@@ -433,7 +448,7 @@ organizeBirds <- function(x,
 
     xyColsl.df <- unlist(findCols(xyCols, x))
     if (length(xyColsl.df) > 0){
-      if (length(xyColsl.df) > 2){ ## if too many matchs try exact=TRUE
+      if (length(xyColsl.df) > 2){ ## if too many matches try exact=TRUE
         xyColsl.df <- unlist(findCols(xyCols, x, exact=TRUE))
         if(length(xyColsl.df) == 0) stop("The column names defined for the coordinates could not be found in the data set")
       }
@@ -448,8 +463,10 @@ organizeBirds <- function(x,
     stop("The argument 'x' should be of class data.frame or SpatialPointsDataFrame.")
   }
 
-  if(proj4string(x) != "+init=epsg:4326 +proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"){
-    x <- spTransform(x, CRS("+init=epsg:4326 +proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"))
+  if(slot(slot(x,"proj4string"), "projargs") != slot(CRS("+init=epsg:4326"),"projargs")){
+  # if(! identicalCRS(x, CRS("+init=epsg:4326"))){
+    x <- spTransform(x, CRS("+init=epsg:4326"))
+    # x <- spTransform(x, CRS("+init=epsg:4326 +proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"))
   }
 
   ### Check the column names
@@ -461,7 +478,11 @@ organizeBirds <- function(x,
   if (!is.null(taxonRankCol)){
     TRCol.df <- findCols(taxonRankCol, x@data, exact = TRUE)
     if (length(TRCol.df) > 0){
-      wIn <- unique(unlist(lapply(taxonRank, grep, x@data[, TRCol.df], ignore.case = TRUE, value = FALSE)))
+      exact.taxonRank <- paste0("\\b", taxonRank, "\\b") ## exact match
+      wIn <- unique(unlist(lapply(exact.taxonRank, grep,
+                                  x@data[, TRCol.df],
+                                  ignore.case = TRUE,
+                                  value = FALSE)))
       nOut <- nrow(x@data) - length(wIn)
       if (length(wIn)>0){
         x<-x[wIn,]

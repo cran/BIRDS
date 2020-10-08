@@ -97,7 +97,7 @@ makeCircle<-function(spdf, projCRS=NULL){
       circle <- spTransform(circle, CRSobj = CRS("+init=epsg:4326"))
 
     } else {
-        stop("More than one unique set of coordinates is needed to make a minimum circle polygon.")
+        stop("More than one unique set of coordinates are needed to make a minimum circle polygon.")
     }
 
     row.names(circle) <- as.character(1:length(row.names(circle)))
@@ -203,7 +203,8 @@ OB2Polygon <- function(x, shape="bBox") {
 #' @keywords internal
 renameGrid<-function(grid){
     for(i in 1:length(grid)){
-      grid@polygons[[i]]@ID <- paste0("ID", i)
+      # grid@polygons[[i]]@ID <- paste0("ID", i)
+      slot(slot(grid, "polygons")[[i]], "ID") <- paste0("ID", i)
     }
   return(grid)
 }
@@ -281,10 +282,13 @@ makeGrid <- function(polygon,
     } else {polygonProjBuffer <- polygonProj}
 
     polygonGeod <- spTransform(polygonProjBuffer, CRSobj = CRS("+init=epsg:4326"))
+    # polygonGeod <- spTransform(polygonProjBuffer, CRSobj = CRS(SRS_string="EPSG:4326"))
+
 
     # observe the grid cell and study area polygon get the difference in
     # longitude/latitude to make the condition
-    dif <- diff(t(polygonProj@bbox))
+    # dif <- diff(t(polygonProj@bbox))
+    dif <- diff(t(slot(polygonProj, "bbox")))
 
     if (any(gridSizeM >= dif)) {
         stop("Grid cells must be smaller than the sampling area")
@@ -322,7 +326,7 @@ makeGrid <- function(polygon,
 #'
 #' Construct a discrete global grid system (dggs) object over a preferred polygon.
 #'
-#' This function depends on a package that is no longer on CRAN. You can 
+#' This function depends on a package that is no longer on CRAN. You can
 #' find it in its GitHub repository \url{https://github.com/r-barnes/dggridR}.
 #' Also, this may generate odd results for very large rectangles, because putting
 #' rectangles on spheres is weird... as you should know, if you're using this package.
@@ -340,6 +344,9 @@ makeGrid <- function(polygon,
 #' @param topology Shape of cell. shall the grid cells be hexagonal, diamonds or
 #' triangular? Options are: \dQuote{hexagon}, \dQuote{diamond}, \dQuote{tirangle}.
 #' Default: \dQuote{hexagon}.
+#' @param aperture How finely subsequent resolution levels divide the grid. Options are: 3, 4.
+#' Only applicable for \code{topology = "hexagon"}. Default for \code{topology = "hexagon"} is 3,
+#' else \code{aperture = 4}.
 #' @param simplify simplifies the polygon geometry using the Douglas-Peuker algorithm  (from rgeos package).
 #' Complicated polygons (those with much detail) make this function run slower.
 #' @param tol numerical tolerance value for the simplification algorith. Set to 0.01 as default.
@@ -362,12 +369,24 @@ makeDggrid <- function(polygon,
                      gridSize,
                      buffer = FALSE,
                      topology = "hexagon",
+                     aperture = 3,
                      simplify=FALSE,
                      tol=0.01) {
   #Construct a global grid with cells approximately 1000 m across
   topology <- toupper(topology)
+
+  aperture <- if(topology == "HEXAGON"){
+    if(aperture == 3 || aperture == 4){
+      aperture
+    }else{
+      stop("aperture can only be 3 or 4.")
+    }
+  }else{
+    4
+  }
+
   dggs <- dggridR::dgconstruct(spacing=gridSize, metric=TRUE, precision=10,
-                      resround='nearest', topology = topology)
+                      resround='nearest', topology = topology, aperture = aperture)
 
   # error not a SpatialPolygon
   if (!(class(polygon) %in% c("SpatialPolygons", "SpatialPolygonsDataFrame"))) {
@@ -407,6 +426,7 @@ makeDggrid <- function(polygon,
     })
   gridPol <- SpatialPolygons(gridPolList, proj4string=CRS("+init=epsg:4326"))
   gridPolInt <- vector()
+
   for(i in 1:length(gridPol)){
     gridPolInt[i] <-rgeos::gIntersects(polygonGeod, gridPol[i,])
   }
@@ -431,7 +451,15 @@ gridAsString <- function(grid) {
 
     ncells <- length(grid)
     polyStrg <- list()
-    for (i in 1:ncells) polyStrg[[i]] <- paste0(apply(grid@polygons[i][[1]]@Polygons[[1]]@coords, 1, paste0, collapse = "%20"), collapse = ",")
+    for (i in 1:ncells){
+
+      polyStrg[[i]] <- paste0(apply(slot(slot(slot(grid, "polygons")[i][[1]],
+                                              "Polygons")[[1]],
+                                         "coords"),  #grid@polygons[i][[1]]@Polygons[[1]]@coords,
+                                    1, paste0, collapse = "%20"),
+                              collapse = ",")
+    }
+
 
     return(polyStrg)
 }

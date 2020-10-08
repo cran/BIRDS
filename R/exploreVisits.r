@@ -20,17 +20,22 @@
 #'   centroid and the observations, in meters.
 #'   \item \dQuote{iqrDist}: the interquartile range of the distances between the
 #'    centroid the observations, in meters.
-#'   \item \dQuote{nOutliers}: the number of observations whose distance to the
-#'   centroid are considered an outlier. Ouliers are defined as distances grater
-#'   than the Q3 * 1.5 (i.e. \code{length(boxplot.stats(distances)$out)} as all
-#'   distances are positive).
+#'   \item \dQuote{nUniqueLoc}: the number of unique combination of coordinates (locations).
+#'   \item \dQuote{nClusters}: the number of clusters defined by the DBSCAN algorithm,
+#'   a minimum of 3 observations per cluster within the median distance between
+#'   all observations. If the number of clusters is = 0 means that there are at
+#'   least 3 unique locations but observations are too spread and no cluster was
+#'   found. If the number of unique locations is less than 3, observations are
+#'   considered as a single cluster without outliers.
+#'   \item \dQuote{nOutliers}: the number of observations whose distance to any
+#'   cluster is beyond the median distance between all observations.
 #'}
 #' @examples
 #' if(interactive()){
 #' # create a visit-based data object from the original observation-based data
-#' OB<-organizeBirds(bombusObs)
-#' visitStats<-exploreVisits(OB)
-#'  esquisse::esquisser(visitStats)
+#' OB <- organizeBirds(bombusObs)
+#' visitStats <- exploreVisits(OB)
+#' esquisse::esquisser(visitStats)
 #' # alternatively, plot the variable you want, e.g.:
 #' # to see the distribution of distances covered on each visit
 #' hist(visitStats$effortDiam)
@@ -46,25 +51,34 @@
 #' }
 #' @export
 #' @importFrom rlang .data
+#' @importFrom dplyr group_by summarise n n_distinct sym
+#' @importFrom rgeos gCentroid
+#' @importFrom dbscan dbscan
+#' @importFrom lubridate date day month year
+#' @importFrom geosphere distGeo distm
 #' @seealso \code{\link{createVisits}}, \code{\link{organiseBirds}}
 exploreVisits<-function(x,
                         visitCol=NULL, #visitCol=attr(x, "visitCol"),
                         sppCol="scientificName"){
+  minPts <- 3 ## Minumin number of points required for clustering
 
   if (class(x) == "OrganizedBirds") {
     spdf<- x$spdf
-    dat <- spdf@data
+    dat <- slot(spdf, "data")
   } else {
     stop("The object 'x' must be of class OrganizedBirds. See the function 'organizedBirds()'.")
   }
   if (is.null(visitCol)){
     visitCol<-attr(x, "visitCol")
   }
-  if (!(visitCol %in% colnames(dat))) stop(paste("There is not column called", visitCol, "in your organised dataset."))
+  if (!(visitCol %in% colnames(dat))) stop(paste("There is no column called",
+                                                 visitCol, "in your organised dataset."))
 
   uniqueUID <- unique(dat[, visitCol])
   uniqueUID <- sort(uniqueUID)
   nUID <- length(uniqueUID)
+
+  dat$date <- lubridate::date(paste(dat$year, dat$month, dat$day, sep = "-"))
 
   visitStat <- data.frame("visitUID" = uniqueUID,
                           "day" = NA,
@@ -79,16 +93,20 @@ exploreVisits<-function(x,
                           "effortDiam" = NA, # the diameter of the minumum circle that covers all points, in meters
                           "medianDist" = NA, # the median (Q2) of the distances between the centroid and all points
                           "iqrDist" = NA, # the interquartile range of the distances between the centroid and all points
-                          "nOutliers" = NA) # number of observations estimated to be outliers
+                          "nUniqueLoc" = NA, # number of unique locations
+                          "nClusters" = NA, # Number of clusters
+                          "nOutliers" = NA) # number of observations estimated to be outliers from the clusters
 
   message(paste("Analysing", nUID, "visits..."))
-  datGBY <- group_by(dat, !!! rlang::syms(visitCol))
+  # datGBY <- group_by(dat, !!! rlang::syms(visitCol))
+  datGBY <- group_by(dat, !! sym(visitCol))
 
   visitStat$nObs <- summarise(datGBY, nObs= n())$nObs
   visitStat$SLL  <- summarise(datGBY, SLL = n_distinct(.data$scientificName)  )$SLL
-  visitStat$day  <- summarise(datGBY, day = as.character(unique(.data$day)))$day
-  visitStat$month<- summarise(datGBY, mon = as.character(unique(.data$month)))$mon
-  visitStat$year <- summarise(datGBY, yea = as.character(unique(.data$year)))$yea
+  dates <- summarise(datGBY, date = min(date)) ##If the visits are over multiple days, we take the first.
+  visitStat$day  <- day(dates$date)
+  visitStat$month<- month(dates$date)
+  visitStat$year <- year(dates$date)
   rm(datGBY)
 
   ### TODO? can this lapply be done with dplyr?
@@ -99,43 +117,67 @@ exploreVisits<-function(x,
     coord <- sp::coordinates(spdfTmp)
     coordPaste <- apply(coord, 1, paste0, collapse = ",")
     coordUnique <- matrix(coord[!duplicated(coordPaste)], ncol = 2)
+    nUniqueLoc <- nrow(coordUnique)
 
-    ctr <- rgeos::gCentroid(spdfTmp) ## still valid if two points
+    ctr <- gCentroid(spdfTmp) ## still valid if two points
     centroidX <- ctr@coords[1]
     centroidY <- ctr@coords[2]
 
-    if (nrow(coordUnique) > 1) {
-      distances<-geosphere::distGeo(ctr, sp::coordinates(spdfTmp)) ## the unstransformed spdf
+    if (nUniqueLoc > 1) {
+      distances <- distGeo(ctr, sp::coordinates(spdfTmp)) ## the unstransformed spdf
+      distM <- distm(spdfTmp, spdfTmp) ## the unstransformed spdf
+      distMLT <- distM[lower.tri(distM)]
+      distancesOut <- distMLT[which(distMLT>0)]
 
-      # The minumum circle that covers all points
+      spdfTmpTr <- sp::spTransform(spdfTmp,
+                                   CRSobj = CRS("+init=epsg:3857"))
+      # coord <- sp::coordinates(spdfTmpTr)
+      # coordPaste <- apply(coord, 1, paste0, collapse = ",")
+      # coordUnique <- matrix(coord[!duplicated(coordPaste)], ncol = 2)
+      # shotGroups::getMinCircle(coordUnique) # The minimum circle that covers all points
+      # this function is very much dependent on the projection
+      # issue #4 the function shotgun::minCircle() is not reliable for extreme
+      # cases with few points or with outliers. We stick to max distance from centroid.
+
       effortDiam <- round(max(distances) * 2, 0)
       medianDist <- round(median(distances), 0)
       iqrDist    <- round(IQR(distances), 0)
-      nOutliers  <- length(boxplot.stats(distances)$out)
+      # nOutliers  <- length(boxplot.stats(distancesOut)$out) ### TODO think another way to compute this
+      if(nUniqueLoc >= minPts ){
+        clusters  <- dbscan(sp::coordinates(spdfTmpTr),
+                            eps = median(distancesOut),
+                            minPts = minPts)
+        nOutliers <- sum(clusters$cluster==0)
+        nClusters  <- sum(unique(clusters$cluster)!=0)
+      } else {
+        nClusters  <- 1
+        nOutliers  <- 0
+      }
+
     } else {
       effortDiam <- 1 # 1m
       medianDist <- 1
       iqrDist    <- 1
+      nClusters  <- 1
       nOutliers  <- 0
     }
-    return(list(centroidX, centroidY, effortDiam, medianDist, iqrDist,nOutliers))
+
+    return(c(centroidX, centroidY, effortDiam, medianDist,
+           iqrDist, nUniqueLoc, nClusters, nOutliers))
   } )
+  varsCtr <- c("centroidX", "centroidY","effortDiam", "medianDist","iqrDist",
+             "nUniqueLoc", "nClusters", "nOutliers")
+  tmp <- matrix(unlist(ctrList), ncol = length(varsCtr), byrow = TRUE,
+                dimnames = list(uniqueUID, varsCtr))
 
-  tmp<-matrix(unlist(ctrList), ncol = 6, byrow = TRUE)
-
-  visitStat$centroidX  <- tmp[,1]
-  visitStat$centroidY  <- tmp[,2]
-  visitStat$effortDiam <- tmp[,3]
-  visitStat$medianDist <- tmp[,4]
-  visitStat$iqrDist    <- tmp[,5]
-  visitStat$nOutliers  <- tmp[,6]
+  visitStat[, match(varsCtr, colnames(visitStat))] <- tmp
 
   visitStat$date <- as.Date(paste(visitStat$year,
                                   visitStat$month,
                                   visitStat$day,
                                   sep="-"),
                             format = "%Y-%m-%d")
-  visitStat$Month <- as.factor(months(visitStat$date))
+  visitStat$Month <- as.factor(months(visitStat$date, abbreviate = FALSE))
   levels(visitStat$Month) <- month.name
 
   message(paste("Finished analysing", nUID, "visits.\n"))
@@ -193,10 +235,10 @@ spatialVisits <- function(x,
   }
 
   utmCRS <- CRS(getUTMproj(x))
-  xTrans <- sp::spTransform(x, CRSobj = utmCRS)
+  xTrans <- spTransform(x, CRSobj = utmCRS)
 
   buff <- rgeos::gBuffer(xTrans,  byid = TRUE, id=x@data$visitUID, width=radiusVal)
-  buff <- sp::spTransform(buff, CRSobj = dataCRS)
+  buff <- spTransform(buff, CRSobj = dataCRS)
 
   return(list("points"=x, "effort"=buff))
 
@@ -206,8 +248,8 @@ spatialVisits <- function(x,
 #' @keywords internal
 getUTMzone <- function(points){
   ##Find which UTM-zones that have the most points
-  utmZonesTr <- sp::spTransform(utmZones, points@proj4string) #To accept all reference systems for points.
-  utmZone <- sp::over(points, utmZonesTr)
+  utmZonesTr <- spTransform(utmZones, slot(points, "proj4string")) #To accept all reference systems for points.
+  utmZone <- over(points, utmZonesTr)
   freqZones <- table(utmZone$ZONE[utmZone$ZONE !=0 ]) ## Zone 0 is both norht and south so we check for it later
   maxZones <- names(freqZones)[which(freqZones == max(freqZones))]
 
@@ -225,9 +267,11 @@ getUTMzone <- function(points){
     }
   }else{
     ##Else we check if there is more or as many points in zone 0 as in any other zone.
-    if(any(sum(freqRows[c("A", "B")]) > freqZones[maxZones], sum(freqRows[c("Y", "Z")]) > freqZones[maxZones])){
+    if(any(sum(freqRows[c("A", "B")]) > freqZones[maxZones],
+           sum(freqRows[c("Y", "Z")]) > freqZones[maxZones])){
       alternatives<-c("0" = FALSE)
-    }else if(any(sum(freqRows[c("A", "B")]) == freqZones[maxZones], sum(freqRows[c("Y", "Z")]) == freqZones[maxZones])){
+    }else if(any(sum(freqRows[c("A", "B")]) == freqZones[maxZones],
+                 sum(freqRows[c("Y", "Z")]) == freqZones[maxZones])){
       alternatives["0"]<-FALSE
     }
   }
@@ -287,7 +331,7 @@ getUTMzone <- function(points){
     }
 
     meanPoint <- sp::SpatialPoints(geosphere::geomean(points),
-                                   proj4string = points@proj4string)
+                                   proj4string = slot(points, "proj4string"))
     utmMeanZone <- sp::over(meanPoint, utmZones)
     res$zone <- as.integer(utmMeanZone$ZONE)
     message("The points are split over two UTM-zones. The zone with the centroid for all the points was chosen.\n")
@@ -316,7 +360,7 @@ getUTMproj<-function(x){
   }
 
   ## error no CRS
-  if (is.na(proj4string(spdf))) {
+  if (is.na(proj4string(spdf))) { #slot(points, "proj4string") or soon wkt()
     stop("The polygon has no coordinate projection system (CRS) associated")
   }
 

@@ -9,6 +9,7 @@ makeDggrid(
   gridSize,
   buffer = FALSE,
   topology = "hexagon",
+  aperture = 3,
   simplify = FALSE,
   tol = 0.01
 )
@@ -30,6 +31,10 @@ for the spatial extent for visits.}
 triangular? Options are: \dQuote{hexagon}, \dQuote{diamond}, \dQuote{tirangle}.
 Default: \dQuote{hexagon}.}
 
+\item{aperture}{How finely subsequent resolution levels divide the grid. Options are: 3, 4.
+Only applicable for \code{topology = "hexagon"}. Default for \code{topology = "hexagon"} is 3,
+else \code{aperture = 4}.}
+
 \item{simplify}{simplifies the polygon geometry using the Douglas-Peuker algorithm  (from rgeos package).
 Complicated polygons (those with much detail) make this function run slower.}
 
@@ -43,7 +48,7 @@ conforming to a grid of equal-area cells, with geodesic coordinates in WGS84 (ES
 Construct a discrete global grid system (dggs) object over a preferred polygon.
 }
 \details{
-This function depends on a package that is no longer on CRAN. You can 
+This function depends on a package that is no longer on CRAN. You can
 find it in its GitHub repository \url{https://github.com/r-barnes/dggridR}.
 Also, this may generate odd results for very large rectangles, because putting
 rectangles on spheres is weird... as you should know, if you're using this package.
