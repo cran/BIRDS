@@ -45,53 +45,81 @@ findCols <- function(pattern, df, exact=FALSE, value = TRUE){
 #' @export
 #' @examples
 #' ymd<-as.Date(Sys.Date())+1:5
-#' organizeDate(as.data.frame(ymd), "ymd")
+#' id<-1:5
+#' organizeDate(data.frame("id"=id,
+#'                         "ymd"=as.character(ymd)),
+#'              "ymd")
 #' @keywords internal
 organizeDate <- function(x, columns){
   if (!length(columns) %in% c(1,3)) stop("Could not create date, please specify either one or three column names")
   stdTimeCols <- c("year", "month", "day")
 
-  cols.df <- findCols(columns, x)
+  cols.df <- findCols(columns, x, exact = TRUE)
 
   if(all(lengths(cols.df) > 0)){
     cols.df <- unlist(cols.df)
 
-    if(ncol(x)>1) x<-x[,cols.df]
-    colnames(x)<-tolower(colnames(x))
-
+    if(ncol(x)>1) x <- x[,cols.df]
     cols.df<-tolower(cols.df)
 
-    if(length(cols.df)==3){
+    if(length(cols.df) == 3){
+      colnames(x)<-tolower(colnames(x))
       if(all(stdTimeCols %in% cols.df)){
-      } else if(any(stdTimeCols %in% cols.df)){
-        wColNot<-which(!(cols.df %in% stdTimeCols))
-        for(i in 1:length(wColNot)){
-          x$placeholder <- as.matrix(x[, cols.df[wColNot]])
-          names(x)[names(x) == "placeholder"] <- stdTimeCols[wColNot[i]]
+        ## all is just fine
+        x<-x[,stdTimeCols]
+        return(x)
+      } else{
+        ### This part here assumes the 3 defined columns are in the right order
+        ### and gives the standard name
+        message("This function assumes that the 3 given column names represent 'year', 'month' and 'day' in that specific order.")
+        if(any(stdTimeCols %in% cols.df)){
+
+          wColNot <- which(!(stdTimeCols %in% cols.df))
+          for(i in 1:length(wColNot)){
+            # x$placeholder <- as.matrix(x[, cols.df[wColNot[i]]])
+            x$placeholder <- x[, cols.df[wColNot[i]]]
+            names(x)[names(x) == "placeholder"] <- stdTimeCols[wColNot[i]]
+          }
+
+        } else {
+          ## if none of the columns names are standard then makes them standard
+          x$year  <- x[,cols.df[1]]
+          x$month <- x[,cols.df[2]]
+          x$day   <- x[,cols.df[3]]
         }
-      } else {
-        x$year  <- x[,cols.df[1]]
-        x$month <- x[,cols.df[2]]
-        x$day   <- x[,cols.df[3]]
       }
 
-      x$day<-ifelse(is.na(x$day), 1, x$day)
-      x$month<-ifelse(is.na(x$month), 1, x$month)
-      return(x)
+      ## empty years are not tolerated! but days and months are given value 1
+      if(sum(is.na(x$day))>0) message(paste("There were", sum(is.na(x$day)),"empty days that were given the value 1"))
+      if(sum(is.na(x$month))>0) message(paste("There were", sum(is.na(x$month)),"empty months that were given the value 1"))
+      x$day <- ifelse(is.na(x$day), 1, x$day)
+      x$month <- ifelse(is.na(x$month), 1, x$month)
+print(x)
+      res<-x
     }
+
     if(length(cols.df) == 1){
-      dateVector<-array(dim=c(nrow(x), 3), dimnames = list(c(), stdTimeCols))
-      dateYMD <- as.Date(x[,cols.df])
+      res <- data.frame(matrix(nrow = length(x), ncol=length(stdTimeCols)))
+      colnames(res)<-stdTimeCols
+      dateYMD <- as.Date(x)
 
-      x$year  <- lubridate::year(dateYMD)
-      x$month <- lubridate::month(dateYMD)
-      x$day   <- lubridate::day(dateYMD)
+      res$year  <- lubridate::year(dateYMD)
+      res$month <- lubridate::month(dateYMD)
+      res$day   <- lubridate::day(dateYMD)
 
-      return(x)
+      # res
     }
   } else {
     stop("One or more specified column names are not present in the input data set.")
   }
+  ## clean unreadable dates (cleaning also the spatial points)
+  wNA <- is.na(res)
+  if (sum(wNA) > 1){
+    res <- res[-wNA,]
+    message(paste(length(wNA), " records deleted because the date was unreadable."))
+  }
+print(res)
+  return(res)
 }
 
 
@@ -215,6 +243,9 @@ createVisits<-function(x,
       spdf <- x
     }
 
+    if (all(idCols == "")) idCols <- NULL
+    if (all(timeCols=="")) timeCols <- NULL
+
     if(!is.null(grid)) {
       if(class(grid) %in% c("SpatialPolygons", "SpatialPolygonsDataFrame")  & !is.null(spdf)){
         df[,"gridID"] <- getGridIDs(spdf, grid)
@@ -230,18 +261,18 @@ createVisits<-function(x,
       gridID <- NULL
     }
 
-    if (all(idCols == "")) idCols <- NULL
-    if (all(timeCols=="")) timeCols <- NULL
-
     columns <- c(gridID, idCols, timeCols)
-    if (length(columns)==0) stop("At least one of the arguments 'idCols','timeCols','grid' needs to be defined.")
+    if (length(columns) == 0) stop("At least one of the arguments 'idCols','timeCols','grid' needs to be defined.")
 
-    cols.df <- findCols(columns, df)
+    cols.df <- findCols(columns, df, exact = TRUE)
 
     if(all(lengths(cols.df) > 0)){
       cols.df <- unlist(cols.df)
-      return(as.integer(factor(apply(df[cols.df], 1, paste0, collapse=""))))
-    } else { stop("Some or none of the column names were not found in the data set.") }
+      res <- as.integer(factor(apply(df[cols.df], 1, paste0, collapse="")))
+      return(res)
+    } else {
+      stop("Some or any of the column names were not found in the data set.")
+    }
 
   } else {
     stop("Argument 'x' must be a 'data.frame' or an 'OrganizedBirds'")
@@ -447,14 +478,25 @@ organizeBirds <- function(x,
     x <- as.data.frame(x)
 
     xyColsl.df <- unlist(findCols(xyCols, x))
+    if(length(xyColsl.df) == 0) stop("The column names defined for the coordinates could not be found in the data set")
+    if(length(xyColsl.df) == 1) stop("The column names defined for the coordinates must be two. Check your values")
+
     if (length(xyColsl.df) > 0){
       if (length(xyColsl.df) > 2){ ## if too many matches try exact=TRUE
         xyColsl.df <- unlist(findCols(xyCols, x, exact=TRUE))
         if(length(xyColsl.df) == 0) stop("The column names defined for the coordinates could not be found in the data set")
       }
       sp::coordinates(x) <- xyColsl.df
-  ### TODO Add message if CRS is not compatible with coordinates?? Do it with try.catch
-      sp::proj4string(x) <- dataCRS
+      sp::proj4string(x) <- CRS(dataCRS)
+
+    ### TODO Add message if CRS is not compatible with coordinates?? Do it with try.catch
+    # testCoord<-tryCatch({
+    #   sp::coordinates(xtest) <- xyColsl.df
+    #   sp::proj4string(xtest) <- CRS(epsgInfo$proj4)
+    # }, error = function(e){
+    #   # print(str(e$message))
+    #   return(e$message)
+    # }
 
     } else { stop("The column names defined for the coordinates could not be found in the data set")}
   } else if(any(class(x) == "SpatialPointsDataFrame")){
@@ -464,9 +506,7 @@ organizeBirds <- function(x,
   }
 
   if(slot(slot(x,"proj4string"), "projargs") != slot(CRS("+init=epsg:4326"),"projargs")){
-  # if(! identicalCRS(x, CRS("+init=epsg:4326"))){
-    x <- spTransform(x, CRS("+init=epsg:4326"))
-    # x <- spTransform(x, CRS("+init=epsg:4326 +proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"))
+    x <- spTransform(x, CRSobj = CRS("+init=epsg:4326"))
   }
 
   ### Check the column names
@@ -483,17 +523,21 @@ organizeBirds <- function(x,
                                   x@data[, TRCol.df],
                                   ignore.case = TRUE,
                                   value = FALSE)))
-      nOut <- nrow(x@data) - length(wIn)
-      if (length(wIn)>0){
-        x<-x[wIn,]
-      } else {stop(paste0("No observation match with the specified taxon rank(s).")) }
 
-      message(paste0(nOut, " observations did not match with the specified taxon rank and were removed."))
+      nOut <- nrow(x@data) - length(wIn)
+
+      if (length(wIn) > 0){
+        x<-x[wIn,]
+        if(nOut > 0) message(paste0(nOut, " observations did not match with the specified taxon rank and were removed."))
+
+      } else { stop(paste0("No observation match with the specified taxon rank(s).")) }
+
+
     } else { stop(paste0("Taxon Rank: there is no column called ", taxonRankCol))}
   }
 
   # Simplify species names to reduce epitets and author names
-  sppCol.df <- findCols(sppCol, x@data)
+  sppCol.df <- findCols(sppCol, x@data, exact = TRUE)
   if (length(sppCol.df) > 0){
     if (!is.null(simplifySppName) && simplifySppName == TRUE){
       x@data[, sppCol.df] <- simplifySpp(x@data, sppCol.df)
@@ -502,12 +546,7 @@ organizeBirds <- function(x,
 
   ## column name control defined in the function organizeDate()
   x@data[, stdTimeCols] <- organizeDate(x@data, timeCols)
-  ## clean unreadable dates (cleaning also the spatial points)
-  wNA <- is.na(x@data$year)
-  if (sum(wNA)>1){
-    x <- x[-wNA,]
-    message(paste(length(wNA), " records deleted because the date was unreadable."))
-  }
+
 
   ## colum name control defined in the function visitUID()
   ## Time is optional in the visits
@@ -521,9 +560,9 @@ organizeBirds <- function(x,
   }
 
   x@data[,"visitUID"] <- createVisits(x,
-                                      idCols=idCols,
-                                      timeCols=timeColsVis,
-                                      grid=grid)
+                                      idCols = idCols,
+                                      timeCols = timeColsVis,
+                                      grid = grid)
 
   #### Preparing the output as we want it
   res.df <- x@data[,c(sppCol.df, stdTimeCols, "visitUID")]

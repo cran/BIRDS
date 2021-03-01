@@ -63,13 +63,22 @@ includeSpillover <- function(x, birdData, visitCol){
 #' @importFrom nnet which.is.max
 #' @keywords internal
 includeUniqueSpillover <- function(birdData, grid, visitCol){
-  # obs <- birdData@data
+  if(class(birdData)=="OrganizedBirds") birdData <- birdData$spdf
+  if(class(birdData)=="SpatialPointsDataFrame") birdData <- birdData
+  if(!(class(birdData) %in% c("OrganizedBirds","SpatialPointsDataFrame"))) stop("Data must be of class 'OrganizedBirds' or 'SpatialPointsDataFrame'")
+
+    # obs <- birdData@data
   obs <- slot(birdData, "data")
   visits <- unique(obs[, visitCol])
   visits <- cbind(visits, "grid" = NA)
 
   if(identicalCRS(birdData, grid) != TRUE){
     stop("Organized data and grid do not share the same CRS")
+  }
+
+  ## rename grids id no have integers
+  for(i in 1:length(grid)){
+    slot(slot(grid, "polygons")[[i]], "ID") <- as.character(i)
   }
 
   #Extract the unique ID from the polygons in the spdf
@@ -223,7 +232,7 @@ All results will use this nomenclature, but the order of the cells will remain u
     porcSpill<-round(nSpill/nVis*100,3)
     message(paste(porcSpill, "% of the visits spill over neighbouring grid cells."))
     if (porcSpill >= 20) {
-      warning("20% or more of the visits spill observations over other grid cells.
+      message("20% or more of the visits spill observations over other grid cells.
 This may suggest that either your grid cell is too narrow or your definition of a 'visit' is not properly defined to match your grid cell size.
 
 Please, consider using 'exploreVisits()' to double check your assumptions.")

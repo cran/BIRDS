@@ -235,6 +235,9 @@ countIfHigher <- function(x, thr, na.rm = TRUE) {
 #' @keywords internal
 #' @importFrom rlang .data
 #' @importFrom dplyr pull
+#' @importFrom zoo zoo
+#' @importFrom xts as.xts
+#' @importFrom lubridate ymd
 exportTemporal <- function(sb, timeRes, variable, method){
   if (variable == "nYears" && timeRes != "month")  stop("This combination of variable and time resolution is not defined because it has no meaning")
   if (is.null(timeRes)) stop("Time resolution ('timeRes') needs to be defined for dimension 'Temporal'")
@@ -270,12 +273,13 @@ exportTemporal <- function(sb, timeRes, variable, method){
     if (timeRes %in% c("yearly", "monthly", "daily")){
       if (method != "sum") stop("This combination of variable and time resolution only accepts 'sum' as summary method")
       resVar <- pull(res, !!sym(variable))
-      names(resVar) <- switch(timeRes,
-                              "yearly" = paste0(yearsAll, "-01-01"),
-                              "monthly"= paste0(res$year, "-", sprintf("%02d", res$month), "-01"),
-                              "daily"  = paste0(res$year, "-", sprintf("%02d", res$month), "-", sprintf("%02d", res$day)))
-      # MAKE RESVAR to xts::as.xts()
-      resVar <- xts::as.xts(resVar)
+      dates <- ymd(switch(timeRes,
+                          "yearly" = paste0(yearsAll, "-01-01"),
+                          "monthly"= paste0(res$year, "-", sprintf("%02d", res$month), "-01"),
+                          "daily"  = paste0(res$year, "-", sprintf("%02d", res$month), "-", sprintf("%02d", res$day)))
+                   )
+      # MAKE RESVAR
+      resVar <- as.xts(zoo(resVar, dates))
 
     } else { #month
       if (!(method %in% c("sum", "median", "mean"))) stop("This combination of variable and time resolution only accepts 'sum', 'median' or 'mean' as summary method")
@@ -297,18 +301,22 @@ exportTemporal <- function(sb, timeRes, variable, method){
 
   } else if (variable == "avgSll"){
     ## Group also by visit
-    res <- getTemporalAvgSll(obsData, timeRes, visitCol, yearsAll)
     if (timeRes %in% c("yearly", "monthly", "daily")){
       if (method != "median") stop("This combination of variable and time resolution only accepts 'median' as summary method")
+      res <- getTemporalAvgSll(obsData, timeRes, visitCol, yearsAll)
       resVar <- pull(res, .data$avgSll)
-      names(resVar) <- switch(timeRes,
-                              "yearly" = paste0(yearsAll, "-01-01"),
-                              "monthly"= paste0(res$year, "-", sprintf("%02d", res$month), "-01"),
-                              "daily"  = paste0(res$year, "-", sprintf("%02d", res$month), "-", sprintf("%02d", res$day)))
-      resVar <- xts::as.xts(resVar)
+
+      dates <- ymd(switch(timeRes,
+                          "yearly" = paste0(yearsAll, "-01-01"),
+                          "monthly"= paste0(res$year, "-", sprintf("%02d", res$month), "-01"),
+                          "daily"  = paste0(res$year, "-", sprintf("%02d", res$month), "-", sprintf("%02d", res$day)))
+                   )
+      # MAKE RESVAR
+      resVar <- as.xts(zoo(resVar, dates))
 
     } else { #month
       if (!(method %in% c("median", "mean"))) stop("This combination of variable and time resolution only accepts 'median' or 'mean' as summary method")
+      res <- getTemporalAvgSll(obsData, timeRes, visitCol, yearsAll)
       gpby <- group_by(res, .data$month)
       if (method == "mean")   resMon <-  summarise(gpby, var = round(mean(.data$avgSll),2))
       if (method == "median") resMon <-  summarise(gpby, var = median(.data$avgSll))
@@ -321,13 +329,14 @@ exportTemporal <- function(sb, timeRes, variable, method){
     if(method != "sum" && timeRes != "month")  stop("This combination of variable and time resolution only accepts 'sum' as summary method")
 
     resRowNames <- rownames(sb$spatial@data)
-    singleGrid <- ifelse(length(resRowNames)==1, TRUE, FALSE)
+    singleGrid <- ifelse(length(resRowNames) == 1, TRUE, FALSE)
 
     if (timeRes == c("yearly")){
       if (singleGrid) {
         resVar <- countIfHigher(sb$spatioTemporal[,,13,1], thr=1)
       } else {
-        resVar <- apply(sb$spatioTemporal[,,13,1], 2, countIfHigher, thr=1)}
+        resVar <- apply(sb$spatioTemporal[,,13,1], 2, countIfHigher, thr=1)
+      }
       names(resVar) <- paste0(yearsAll, "-01-01")
     }
 
@@ -340,6 +349,7 @@ exportTemporal <- function(sb, timeRes, variable, method){
       if (timeRes == "monthly"){
         resVar <- as.vector(t(ncellsM))
         names(resVar) <- paste0(rep(yearsAll, each=12), "-", 1:12, "-01")
+
       } else {
         resVar <- apply(ncellsM, 2, method)
         names(resVar) <- month.abb
@@ -347,8 +357,11 @@ exportTemporal <- function(sb, timeRes, variable, method){
     }
 
     if (timeRes == c("daily")){
-      daygrid<-lapply(sb$overlaid, function(x) unique(paste0(x$year, "-", x$month, "-", x$day)))
-      dayGridP<-as.character(as.Date(unlist(daygrid)))
+      daygrid <- lapply(sb$overlaid, function(x){
+        unique(paste0(x$year, "-", x$month, "-", x$day))
+      } )
+      daygrid <- daygrid[daygrid != "--"]
+      dayGridP <- as.character(as.Date(unlist(daygrid)))
 
       all.Days <- as.character(sort(as.Date(unique(unlist(daygrid)))))
       resVar <- unlist(
@@ -359,8 +372,11 @@ exportTemporal <- function(sb, timeRes, variable, method){
       names(resVar) <- all.Days
     }
 
-    if (timeRes != "month") resVar <- xts::as.xts(resVar)
-
+    if (timeRes != "month") {
+      resVar <- zoo(unname(resVar),
+                    ymd(names(resVar)))
+      resVar <- as.xts(resVar)
+    }
   } else {
     stop(paste0("variable = ", variable, " is not a valid input"))
   }

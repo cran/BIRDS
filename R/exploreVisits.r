@@ -35,7 +35,7 @@
 #' # create a visit-based data object from the original observation-based data
 #' OB <- organizeBirds(bombusObs)
 #' visitStats <- exploreVisits(OB)
-#' esquisse::esquisser(visitStats)
+#' # esquisse::esquisser(visitStats)
 #' # alternatively, plot the variable you want, e.g.:
 #' # to see the distribution of distances covered on each visit
 #' hist(visitStats$effortDiam)
@@ -54,10 +54,10 @@
 #' @importFrom dplyr group_by summarise n n_distinct sym
 #' @importFrom rgeos gCentroid
 #' @importFrom dbscan dbscan
-#' @importFrom lubridate date day month year
+#' @importFrom lubridate date day month year ymd
 #' @importFrom geosphere distGeo distm
 #' @seealso \code{\link{createVisits}}, \code{\link{organiseBirds}}
-exploreVisits<-function(x,
+exploreVisits <- function(x,
                         visitCol=NULL, #visitCol=attr(x, "visitCol"),
                         sppCol="scientificName"){
   minPts <- 3 ## Minumin number of points required for clustering
@@ -78,7 +78,8 @@ exploreVisits<-function(x,
   uniqueUID <- sort(uniqueUID)
   nUID <- length(uniqueUID)
 
-  dat$date <- lubridate::date(paste(dat$year, dat$month, dat$day, sep = "-"))
+  # dat$date <- date(paste(dat$year, dat$month, dat$day, sep = "-"))
+  dat$date <- ymd(paste(dat$year, dat$month, dat$day, sep = "-"))
 
   visitStat <- data.frame("visitUID" = uniqueUID,
                           "day" = NA,
@@ -130,7 +131,8 @@ exploreVisits<-function(x,
       distancesOut <- distMLT[which(distMLT>0)]
 
       spdfTmpTr <- sp::spTransform(spdfTmp,
-                                   CRSobj = CRS("+init=epsg:3857"))
+                                   CRSobj = suppressWarnings(
+                                     CRS("+init=epsg:3857")))
       # coord <- sp::coordinates(spdfTmpTr)
       # coordPaste <- apply(coord, 1, paste0, collapse = ",")
       # coordUnique <- matrix(coord[!duplicated(coordPaste)], ncol = 2)
@@ -172,11 +174,15 @@ exploreVisits<-function(x,
 
   visitStat[, match(varsCtr, colnames(visitStat))] <- tmp
 
-  visitStat$date <- as.Date(paste(visitStat$year,
-                                  visitStat$month,
-                                  visitStat$day,
-                                  sep="-"),
-                            format = "%Y-%m-%d")
+  # visitStat$date <- as.Date(paste(visitStat$year,
+  #                                 visitStat$month,
+  #                                 visitStat$day,
+  #                                 sep="-"),
+  #                           format = "%Y-%m-%d")
+  visitStat$date <- lubridate::ymd(paste(visitStat$year,
+                                         visitStat$month,
+                                         visitStat$day,
+                                         sep="-"))
   visitStat$Month <- as.factor(months(visitStat$date, abbreviate = FALSE))
   levels(visitStat$Month) <- month.name
 
@@ -234,7 +240,7 @@ spatialVisits <- function(x,
          vector of length equal to the number of visits")
   }
 
-  utmCRS <- CRS(getUTMproj(x))
+  utmCRS <- suppressWarnings(CRS(getUTMproj(x)))
   xTrans <- spTransform(x, CRSobj = utmCRS)
 
   buff <- rgeos::gBuffer(xTrans,  byid = TRUE, id=x@data$visitUID, width=radiusVal)
@@ -248,7 +254,9 @@ spatialVisits <- function(x,
 #' @keywords internal
 getUTMzone <- function(points){
   ##Find which UTM-zones that have the most points
-  utmZonesTr <- spTransform(utmZones, slot(points, "proj4string")) #To accept all reference systems for points.
+  utmZonesTr <- suppressWarnings(spTransform(utmZones,
+                                             slot(points, "proj4string"))
+                              ) #To accept all reference systems for points.
   utmZone <- over(points, utmZonesTr)
   freqZones <- table(utmZone$ZONE[utmZone$ZONE !=0 ]) ## Zone 0 is both norht and south so we check for it later
   maxZones <- names(freqZones)[which(freqZones == max(freqZones))]
@@ -353,14 +361,20 @@ getUTMproj<-function(x){
   } else {
     if(class(x) == "SpatialPointsDataFrame"){
       spdf <- x
-      spdf <- spTransform(spdf, CRSobj = CRS("+init=epsg:4326"))
+      spdf <- spTransform(spdf,
+                          CRSobj = suppressWarnings(
+                            CRS("+init=epsg:4326"))
+                          )
     } else {
       stop("Input data is neither an object of class 'OrganizedBirds' or 'SpatialPointsDataFrame'")
     }
   }
 
   ## error no CRS
-  if (is.na(proj4string(spdf))) { #slot(points, "proj4string") or soon wkt()
+  # if (is.na(proj4string(spdf))) { #slot(points, "proj4string") or soon wkt()
+  #   stop("The polygon has no coordinate projection system (CRS) associated")
+  # }
+  if (is.na(slot(spdf, "proj4string"))) {
     stop("The polygon has no coordinate projection system (CRS) associated")
   }
 
