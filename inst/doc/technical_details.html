@@ -12,7 +12,7 @@
 
 <meta name="author" content="Alejandro Ruete and Debora Arlt" />
 
-<meta name="date" content="2021-03-01" />
+<meta name="date" content="2021-06-26" />
 
 <title>BIRDS technical details</title>
 
@@ -40,6 +40,7 @@
 pre > code.sourceCode { white-space: pre; position: relative; }
 pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
 pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
 code.sourceCode > span { color: inherit; text-decoration: inherit; }
 div.sourceCode { margin: 1em 0; }
 pre.sourceCode { margin: 0; }
@@ -140,7 +141,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 
 <h1 class="title toc-ignore">BIRDS technical details</h1>
 <h4 class="author">Alejandro Ruete and Debora Arlt</h4>
-<h4 class="date">2021-03-01</h4>
+<h4 class="date">2021-06-26</h4>
 
 
 
@@ -239,7 +240,7 @@ If there is no common spatial identifier to define the visit extent, and the obs
 </blockquote>
 <p>The objects within SB can be called with <code>SB$x</code> where x is the object name described below:</p>
 <ul>
-<li><code>spatial</code> is a <code>SpatialPolygonDataFrame</code> object with variables summarized per grid cell. As usual for an SPDF the values are stored in the slot <span class="citation">@data</span>, e.g. <a href="mailto:SB$Spatial@data" class="email">SB$Spatial@data</a><br />
+<li><code>spatial</code> is a <code>sf</code> object with variables summarized per grid cell. As usual for an sf object the values are stored as a data.frame<br />
 </li>
 <li><code>temporal</code> is an <code>xts</code> object with variables summarized per day. Read more about specific functions for extended time series <a href="https://CRAN.R-project.org/package=xts">here</a><br />
 </li>

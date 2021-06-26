@@ -1,7 +1,7 @@
 Package: BIRDS
 Type: Package
 Title: Biodiversity Information Review and Decision Support
-Version: 0.1.27.1
+Version: 0.2.0
 URL: https://github.com/greensway/BIRDS
 BugReports: https://github.com/Greensway/BIRDS/issues
 Authors@R: c(
@@ -37,18 +37,18 @@ LazyData: true
 Depends: R (>= 3.5.0)
 SystemRequirements: GDAL (>= 2.0.1)
 Imports: data.table, dbscan, dplyr, geosphere (>= 1.5), leaflet (>=
-        2.0), lubridate (>= 1.7.4), magrittr, methods, nnet, rgdal (>=
-        1.5), rgeos (>= 0.4), rlang, sf (>= 0.7), sp (>= 1.4-4),
-        stringr (>= 1.4), shotGroups, taxize, tidyr, xts, zoo
-Suggests: covr, knitr, leaflet.extras, leafpm, mapedit (>= 0.5), maps,
-        rgbif, rmarkdown, shiny (>= 1.0), testthat, utils, vegan
+        2.0), lubridate (>= 1.7.4), magrittr, mapedit, methods, nnet,
+        rgdal (>= 1.5), rgeos (>= 0.4), rlang, sf (>= 0.7), stringr (>=
+        1.4), shotGroups, taxize, tidyr, xts, zoo
+Suggests: covr, knitr, leaflet.extras, leafpm, maps, rmarkdown, shiny
+        (>= 1.0), testthat, utils, vegan
 RoxygenNote: 7.1.1
 VignetteBuilder: knitr
 NeedsCompilation: no
-Packaged: 2021-03-01 11:17:17 UTC; alejandro
+Packaged: 2021-06-26 21:08:41 UTC; Alejandro
 Author: Debora Arlt [aut] (<https://orcid.org/0000-0003-0874-4250>),
   Alejandro Ruete [aut, cre] (<https://orcid.org/0000-0001-7681-2812>),
   Anton Hammarström [aut]
 Maintainer: Alejandro Ruete <aleruete@gmail.com>
 Repository: CRAN
-Date/Publication: 2021-03-01 14:00:16 UTC
+Date/Publication: 2021-06-26 21:30:02 UTC

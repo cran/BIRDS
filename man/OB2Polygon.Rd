@@ -2,12 +2,12 @@
 % Please edit documentation in R/makeGrid.r
 \name{OB2Polygon}
 \alias{OB2Polygon}
-\title{Create the polygon for the study area from a dataset of class \sQuote{OrganizedBirds}}
+\title{Create the polygon for the study area from a data set of class \sQuote{OrganizedBirds}}
 \usage{
 OB2Polygon(x, shape = "bBox")
 }
 \arguments{
-\item{x}{an object of class \sQuote{OrganizedBirds} or \sQuote{SpatialPointsDataFrame}}
+\item{x}{an object of class \sQuote{OrganizedBirds}, \sQuote{sf} or \sQuote{SpatialPointsDataFrame}}
 
 \item{shape}{which type of polygon should be made from the data:
 \itemize{
@@ -20,13 +20,15 @@ OB2Polygon(x, shape = "bBox")
 }}
 }
 \value{
-an object of class \sQuote{SpatialPolygon} with a polygon with geodesic
-coordinates in WGS84 (ESPG:4326).
+an object of class \sQuote{sf} with a polygon with geodesic coordinates
+ in WGS84 (ESPG:4326).
 }
 \description{
-Create the polygon for the study area from a dataset of class \sQuote{OrganizedBirds}
+Create the polygon for the study area from a data set of class \sQuote{OrganizedBirds}
 }
 \examples{
-orgDf <- organizeBirds(bombusObs)
-polygon <- OB2Polygon(orgDf, shape = "cHull")
+\donttest{
+  ob <- organizeBirds(bombusObs)
+  polygon <- OB2Polygon(ob, shape = "cHull")
+}
 }

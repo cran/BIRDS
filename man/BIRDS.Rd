@@ -6,15 +6,16 @@
 \title{BIRDS: Biodiversity Information Review and Decision Support.}
 \description{
 The primary aim of this package is to provide tools for Biodiversity Informatics
-in order to understand the specis information data and decide about what analyses
-we can perform and draw approriate conclusions. For this we need to understand
+in order to understand the species information data and decide about what analyses
+we can perform and draw appropriate conclusions. For this we need to understand
 the data generation process. With this R package we want to take the
-user a step closer to understanding the observers’ behaviour.
-The 'BIRDS' packages provides a workflow for reproducable data review, involving
-three basic steps: organise data, summarise data, review data.
+user a step closer to understanding the observers’ behavior.
+The 'BIRDS' packages provides a workflow for reproducible data review, involving
+three basic steps: organize, summarize, and review data.
 }
 \examples{
 \donttest{
+library(sf)
 # Organise the data
 OB <- organizeBirds(bombusObsShort, sppCol = "scientificName", simplifySppName = TRUE)
 
@@ -33,16 +34,15 @@ EBnVis <- exportBirds(SB, dimension = "temporal", timeRes = "yearly",
 variable = "nVis", method = "sum")
 EB<-exportBirds(SB, "Spatial", "Month", "nYears", "sum")
 palBW <- leaflet::colorNumeric(c("white", "navyblue"),
-         c(0, max(EB@data, na.rm = TRUE)), na.color = "transparent")
-library(sp)
+         c(0, max(st_drop_geometry(EB), na.rm = TRUE)), na.color = "transparent")
 old.par <- par(no.readonly =TRUE)
 par(mfrow=c(1,2), mar=c(1,1,1,1))
-plot(EB, col=palBW(EB@data$Jul))
+plot(EB, col=palBW(EB$Jul))
 mtext("July", 3)
-plot(EB, col=palBW(EB@data$Dec))
+plot(EB, col=palBW(EB$Dec))
 mtext("December", 3)
-legend("bottomleft", legend=seq(0, max(EB@data, na.rm = TRUE),length.out = 5),
-       col = palBW(seq(0, max(EB@data, na.rm = TRUE), length.out = 5)),
+legend("bottomleft", legend=seq(0, max(st_drop_geometry(EB), na.rm = TRUE),length.out = 5),
+       col = palBW(seq(0, max(st_drop_geometry(EB), na.rm = TRUE), length.out = 5)),
        title = "Number of years", pch = 15, bty="n")
 par(old.par)
 }
